@@ -4,18 +4,23 @@
 #include "Solution.h"
 #include "tinyxml2.h"
 
-struct Task {
-    std::vector<std::pair<Work, std::vector<size_t>> graph;
-    std::vector<size_t> indexSource;
+class Task {
+public:
+    std::vector<std::pair<Work, std::vector<size_t>>> graph;
+    std::vector<size_t> topSort;
     std::vector<int64_t> criticalTime;
-    // std::vector<int64_t> prevWork;
+ 
     int64_t Tmax;
 
+    Task() {};
+    
     Task(tinyxml2::XMLElement* config);
 
-    int64_t getTime() const;
+    int64_t getTime(Solution& solution);
 
-    void updateCriticalTime(const Solution& solution);
+    void checkSolution(Solution& solution);
+
+    void updateCriticalTime(Solution& solution);
 
     std::vector<Work*> getWorksGC1();
 };

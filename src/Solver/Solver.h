@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <queue>
 #include <string>
 
 #include "Task.h"
@@ -13,15 +14,23 @@ class Solver {
     Solution firstSol;
     Solution curSol;
 
-    void rebuildSchedule(const Work& work);
+    void rebuildSchedule(std::queue<int>& q, Solution& sol);
+
+    void correctTime(Solution& sol);
+
+    void tryReduceTime(Solution& sol);
+
+    void assigneDeletedWork(Solution& sol, std::vector<Work*>& delWork);
+
+    bool riseCost(Solution& sol, int64_t time);
 public:
-    Task(const std::string& dataPath);
+    Solver(const std::string& dataPath = "");
 
     void run();
 
     void firstStep();
 
-    //void secondStep();
+    void secondStep(std::vector<size_t>& delVM);
 
-    //void printAns();
+    void printAns();
 };

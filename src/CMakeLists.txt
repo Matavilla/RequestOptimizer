@@ -36,6 +36,7 @@ set(CPP_HEADERS
     VM/VMParam.h
     Task/Task.h
     Task/Work.h
+    Task/Solution.h
     XmlLibrary/tinyxml2.h
     Solver/Solver.h)
 

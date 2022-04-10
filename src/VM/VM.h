@@ -20,39 +20,80 @@ struct VM {
     
     double curCost = 0.0;
 
+    void updateParameters() {
+        for (auto& i : sch) {
+            for (auto& [k, j] : i.work->M) {
+                if (!j->overcommitFlag()) {
+                    X[k]->setValue(std::max(j->getValue(), X[k]->getValue()));
+                } else {
+                    X[k]->setValue(j->getValue() + X[k]->getValue());
+                }
+            }
+        }
+    }
+
     void updateCost() {
-        auto sum = [](const double& sum, const std::unique_ptr<BaseParam>& tmp) {return sum + tmp->getCost();};
-        curCost = std::accumulate(X.begin(), X.end(), 0.0, sum);
+        curCost = 0;
+        for (auto& [k, j] : X) {
+            curCost += j->getCost();
+        }
     }
 
     VM() = delete;
 
     VM(const Work& a) {
         for (auto& [i, j] : a.M) {
-            X[i] = createParam(i, j->getValue());
+            X[i].reset(createParam(i, j->getValue()));
         }
     }
 
     VM(const VM& vm) {
         sch = vm.sch;
         for (auto& [i, j] : vm.X) {
-            X[i] = createParam(i, j->getValue());
+            X[i].reset(createParam(i, j->getValue()));
         }
     }
 
     bool canAssignWork(const Work& w, const int64_t& time) {
-        for (auto& i : sch) {
-            if ((i->startT <= time && i->endT >= time) || (i->startT <= (time + w(X)) && i->endT >= (time + w(X)))) {
-                return false;
+        std::map<std::string, int64_t> saveParam;
+        bool flag = true;
+        for (auto& [i, j] : w.M) {
+            saveParam[i] = X[i]->getValue();
+            bool retVal;
+            if (!j->overcommitFlag()) {
+                retVal = X[i]->setValue(std::max(j->getValue(), X[i]->getValue()));
+            } else {
+                retVal = X[i]->setValue(j->getValue() + X[i]->getValue());
             }
+            if (!retVal) {
+                flag = false;
+                break;
+            }
+        }
+
+        if (flag) {
+            for (auto& i : sch) {
+                int64_t endT = i.startT + i.work->t(X);
+                if ((i.startT <= time && endT >= time) || (i.startT <= (time + w(X)) && endT >= (time + w(X)))) {
+                    flag = false;
+                    break;
+                }
+            }
+        }
+
+        if (!flag) {
+            for (auto& [i, j] : saveParam) {
+                X[i]->setValue(j);
+            }
+            return false;
         }
         return true;
     }
 
-    void insertWork(const Work& w, const int64_t& time) {
+    void insertWork(Work& w, const int64_t& time) {
         SchElem tmp {&w, time, time + w(X)};
-        for (auto i = sch.begin(); i < sch.end(); i++) {
-            if ((*i)->startT > tmp.endT)) {
+        for (auto i = sch.begin(); i != sch.end(); i++) {
+            if (i->startT >= tmp.endT) {
                 sch.insert(i, std::move(tmp));
                 return;
             }

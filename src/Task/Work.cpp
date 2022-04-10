@@ -2,17 +2,21 @@
 
 Work::Work(tinyxml2::XMLElement* config) {
     int tmp;
-    config->FirstChildElement("N")->QueryIntText(&num);
+    config->FirstChildElement("N")->QueryIntText(&tmp);
+    num = tmp;
     config->FirstChildElement("t")->QueryIntText(&tmp);
     t = [](const Parameters& tmp) {return 10;};
     
     for (const auto& i : NAME_PARAM) {
-        config->FirstChildElement(i)->QueryIntText(&tmp);
-        M[i] = CreateParam(i, tmp);
+        config->FirstChildElement(i.c_str())->QueryIntText(&tmp);
+        M[i].reset(createParam(i, tmp));
     }
 }
 
-double Work::getBaseCost() {
-    auto sum = [](const double& sum, const std::unique_ptr<BaseParam>& tmp) {return sum + tmp->getCost();}
-    return std::accumulate(M.begin(), M.end(), 0.0, sum);
+double Work::getBaseCost() const{
+    double curCost = 0;
+    for (auto& [k, j] : M) {
+        curCost += j->getCost();
+    }
+    return curCost;
 }

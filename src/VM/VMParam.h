@@ -13,13 +13,17 @@ public:
     virtual double getCost() const = 0;
 
     virtual int64_t getValue() const = 0;
+    
+    virtual bool setValue(int64_t val) = 0;
 
     virtual double getStepCost() const = 0;
+
+    virtual bool overcommitFlag() const = 0;
 
     virtual ~BaseParam() = default;
 };
 
-template <int64_t x1_val, int64_t x2_val, int64_t step, int16_t cost>
+template <int64_t x1_val, int64_t x2_val, int64_t step, int16_t cost, int64_t overcommit>
 class Param : public BaseParam {
     int64_t value;
     static constexpr int64_t x1 = x1_val;
@@ -44,6 +48,10 @@ public:
         return true;
     }
 
+    bool overcommitFlag() const {
+        return overcommit;
+    }
+
     bool downCost() {
         if (value - step < x1) {
             return false;
@@ -56,6 +64,14 @@ public:
         return value;
     }
 
+    bool setValue(int64_t val) {
+        if (val < x1 || val > x2) {
+            return false;
+        }
+        value = val;
+        return true;
+    }
+
     double getCost() const {
         return cost * ((double) value) / x2;
     }
@@ -66,17 +82,17 @@ public:
 };
 
 using Parameters = std::map<std::string, std::unique_ptr<BaseParam>>;
-const std::vector<std::string> NAME_PARAM = {"vCPU", "vRAM", "vHDD", "vIO"};
+const std::array<std::string, 4> NAME_PARAM = {"vCPU", "vRAM", "vHDD", "vIO"};
 
 BaseParam* createParam(const std::string& name, const int64_t& value = 0) {
     if (name == NAME_PARAM[0]) {
-        return new Param<1, 100, 1, 400>(value);
+        return new Param<1, 100, 1, 400, 0>(value);
     } else if (name == NAME_PARAM[1]) {
-        return new Param<1, 256, 1, 300>(value);
+        return new Param<1, 256, 1, 300, 0>(value);
     } else if (name == NAME_PARAM[2]) {
-        return new Param<1, 2048, 1, 100>(value);
+        return new Param<1, 2048, 1, 100, 0>(value);
     } else if (name == NAME_PARAM[3]) {
-        return new Param<1, 128, 1, 300>(value);
+        return new Param<1, 128, 1, 300, 0>(value);
     } else {
         throw "wrong name param";
     }
