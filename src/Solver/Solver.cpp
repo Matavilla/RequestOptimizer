@@ -15,56 +15,38 @@ Solver::Solver(const std::string& dataPath) {
     A = Task(doc.FirstChildElement("Task"));
 }
 
-bool next_combination(std::vector<size_t>& a, int n) {
-	int k = a.size();
-	for (int i = k - 1; i >= 0; --i)
-		if (a[i] < (n - k + i + 1)) {
-			++a[i];
-			for (int j = i + 1; j < k; ++j)
-				a[j] = a[j - 1] + 1;
-			return true;
-		}
-	return false;
-}
-
 void Solver::run() {
     firstStep();
+    printAns(firstSol); 
     correctTime(firstSol);
     bestSol = firstSol;
-    for (size_t k = 1; k < firstSol.Vm.size() - 1; k++) {
-        std::vector<std::vector<size_t>> delVM;
-        std::vector<size_t> tmp;
-        for (size_t i = 0; i < k; i++) {
-            tmp.emplace_back(i + 1);
-        }
-        delVM.push_back(tmp);
-        delVM.push_back(std::move(tmp));
-        while (next_combination(delVM.back(), firstSol.Vm.size() - 1)) {
-            delVM.push_back(delVM.back());
-        }
-        delVM.pop_back();
-
+    for (size_t k = 1; k < firstSol.Vm.size(); k++) {
         std::mt19937 engine;
         engine.seed(unsigned(std::time(nullptr)));
+        std::uniform_int_distribution<size_t> distribution(1, firstSol.Vm.size() - 1);
         int deep1 = 100;
         do {
-            if (delVM.empty()) {
-                break;
+            std::set<size_t> usedIndex;
+            std::vector<size_t> delVM;
+            while (delVM.size() != k) {
+                size_t ind = distribution(engine);
+                if (!usedIndex.contains(ind)) {
+                    delVM.emplace_back(ind);
+                    usedIndex.insert(ind);
+                }
             }
-            std::uniform_int_distribution<size_t> distribution(0, delVM.size() - 1);
-            size_t ind = distribution(engine);
             curSol = firstSol;
             for (auto& vm : curSol.Vm) {
                 vm.updateParameters();
             }
-            secondStep(delVM[ind]); 
+            secondStep(delVM);
+            std::erase_if(curSol.Vm, [] (const VM& vm){return vm.sch.empty();});
             if (curSol.getCost() < bestSol.getCost() || ((curSol.getCost() == bestSol.getCost()) && A.getTime(curSol) < A.getTime(bestSol))) {
                 bestSol = std::move(curSol);
             }
-            delVM.erase(delVM.begin() + ind);
         } while (deep1--);
     }
-    printAns();   
+    printAns(bestSol);   
 }
 
 void Solver::correctTime(Solution& sol) {
@@ -72,7 +54,7 @@ void Solver::correctTime(Solution& sol) {
         tryReduceTime(sol);
         while (A.getTime(sol) > A.Tmax) {
             if (!riseCost(sol, A.getTime(sol))) {
-                throw("WTF with time !?");
+                //throw("WTF with time !?");
             }
         } 
     }
@@ -97,7 +79,7 @@ bool Solver::riseCost(Solution& sol, int64_t time) {
                 for (auto i1 = vm.sch.begin(); i1 != vm.sch.end(); i1++) {
                     i1->startT = std::max(lastEnd, A.criticalTime[i1->work->num]);
                     i1->endT = i1->startT + (*(i1->work))(vm.X);
-                    lastEnd = std::max(time, i1->endT);
+                    lastEnd = i1->endT;
                     q.push(i1->work->num);
                 }                
                 rebuildSchedule(q, tmpSol);
@@ -124,11 +106,10 @@ void Solver::rebuildSchedule(std::queue<int>& q, Solution& sol) {
     while (!q.empty()) {
         int node = q.front();
         q.pop();
+        A.updateCriticalTime(sol);
         if (node == -1) {
-            A.updateCriticalTime(sol);
             continue;
         }
-
         for (auto& vm : sol.Vm) {
             for (auto i = vm.sch.begin(); i != vm.sch.end(); i++) {
                 if (std::find(A.graph[node].second.begin(), A.graph[node].second.end(), i->work->num) != A.graph[node].second.end()) {
@@ -150,11 +131,11 @@ void Solver::rebuildSchedule(std::queue<int>& q, Solution& sol) {
                     if (flag) {
                         vm.sch.emplace_back(SchElem{&work, lastEnd, lastEnd + work(vm.X)});
                         i = vm.sch.end();
+                        break;
                     }
                 }
             }
         }
-
         if (!A.graph[node].second.empty()) {
             q.push(-1); // update Critical Time
         }
@@ -173,6 +154,7 @@ void Solver::firstStep() {
         q.push(work->num);
 
         bool notFindVM = true;
+        VM* assignedVM = nullptr;
         for (auto& vm : firstSol.Vm) {
             if (vm.canAssignWork(*work, A.criticalTime[work->num])) {
                 for (auto& [i, j] : work->M) {
@@ -189,7 +171,7 @@ void Solver::firstStep() {
                     lastEnd = i->endT;
                     q.push(i->work->num);
                 }
-                firstSol.assignedVM[work->num] = &vm;
+                assignedVM = &vm;
                 notFindVM = false;
                 break;
             }
@@ -197,10 +179,11 @@ void Solver::firstStep() {
 
         if (notFindVM) {
             firstSol.Vm.emplace_back(*work);
-            firstSol.assignedVM[work->num] = &firstSol.Vm.back();
+            assignedVM = &firstSol.Vm.back();
             q.pop(); q.pop();
         }
-        firstSol.assignedVM[work->num]->insertWork(*work, A.criticalTime[work->num]);
+        firstSol.assignedWork.insert(work->num);
+        assignedVM->insertWork(*work, A.criticalTime[work->num]);
         rebuildSchedule(q, firstSol);
     }
 }
@@ -222,7 +205,7 @@ void Solver::assigneDeletedWork(Solution& sol, std::vector<Work*>& delWork) {
         for (auto& vm : sol.Vm) {
             size_t locDelta = 0;
             for (auto& j : vm.sch) {
-                if (j.startT <= A.criticalTime[w->num] && j.endT >= A.criticalTime[w->num]) {
+                if (j.startT < A.criticalTime[w->num] && j.endT >= A.criticalTime[w->num]) {
                     locDelta = j.endT - A.criticalTime[w->num];
                     break;
                 }
@@ -250,6 +233,7 @@ void Solver::assigneDeletedWork(Solution& sol, std::vector<Work*>& delWork) {
         for (auto i = vmForAssigned->sch.begin(); i != vmForAssigned->sch.end(); i++) {
             i->startT = std::max(lastEnd, A.criticalTime[i->work->num]);
             i->endT = i->startT + (*i->work)(vmForAssigned->X);
+            q.push(i->work->num);
             if (flag && (i->startT >= tmp.startT)) {
                 i = vmForAssigned->sch.insert(i, std::move(tmp));
                 flag = false;
@@ -259,6 +243,7 @@ void Solver::assigneDeletedWork(Solution& sol, std::vector<Work*>& delWork) {
         if (flag) {
             vmForAssigned->sch.emplace_back(std::move(tmp));
         }
+        sol.assignedWork.insert(w->num);
         q.push(w->num);
     }
     /* перестроить расписание */
@@ -266,9 +251,12 @@ void Solver::assigneDeletedWork(Solution& sol, std::vector<Work*>& delWork) {
 }
 
 void Solver::tryReduceTime(Solution& sol) {
-    int deep = 1000;
+    int deep = 30;
     do {
         A.updateCriticalTime(sol);
+        if (A.getTime(sol) <= A.Tmax) {
+            break;
+        }
         std::vector<Work*> delWork;
         Work* delW = nullptr;
         size_t delta = 0;
@@ -281,10 +269,8 @@ void Solver::tryReduceTime(Solution& sol) {
             }
         }
         delWork.emplace_back(delW);
-        sol.assignedVM.erase(delW->num);
-        std::remove_if(sol.assignedVM[delW->num]->sch.begin(),
-                       sol.assignedVM[delW->num]->sch.end(),
-                       [&delW] (const SchElem& el) { return el.work == delW; });
+        sol.getVM(delW)->sch.erase(sol.getSchElem(delW));
+        sol.assignedWork.erase(delW->num);
         assigneDeletedWork(sol, delWork);
     } while (deep--);
 }
@@ -296,12 +282,13 @@ void Solver::secondStep(std::vector<size_t>& delVM) {
         delVMPtr.insert(&curSol.Vm[ind]);
         for (auto& j : curSol.Vm[ind].sch) {
             delWork.emplace_back(j.work);
-            curSol.assignedVM.erase(j.work->num);
+            curSol.assignedWork.erase(j.work->num);
         }
     }
-    std::remove_if(curSol.Vm.begin(),
-                   curSol.Vm.end(),
-                   [&delVMPtr] (VM& el)  { return delVMPtr.find(&el) != delVMPtr.end(); });
+    auto it = std::remove_if(curSol.Vm.begin(),
+                             curSol.Vm.end(),
+                             [&delVMPtr] (VM& el) -> bool { return delVMPtr.find(&el) != delVMPtr.end(); });
+    curSol.Vm.erase(it, curSol.Vm.end());
     std::sort(delWork.begin(),
              delWork.end(),
              [this] (Work* a, Work* b) {
@@ -313,9 +300,20 @@ void Solver::secondStep(std::vector<size_t>& delVM) {
     correctTime(curSol);
 }
 
-void Solver::printAns() {
+void Solver::printAns(Solution& sol) {
+    double baseCost = 0;
+    for (auto& it : A.graph) {
+        baseCost += it.first.getBaseCost();
+    }
+    if (true) {
+        std::cout << A.Tmax << " "
+                  << baseCost << " "
+                  << A.getTime(sol) << " "
+                  << sol.getCost() << std::endl;
+        return;
+    }
     size_t i = 1;
-    for (auto& vm : bestSol.Vm) {
+    for (auto& vm : sol.Vm) {
         std:: cout << "VM_" << i++ << " : ";
         for (auto& i : NAME_PARAM) {
             std::cout << "<" << i << ": " << vm.X[i]->getValue() << ">, ";
@@ -327,5 +325,9 @@ void Solver::printAns() {
         }
         std::cout << std::endl;
     }
-    std::cout << "TotalCost: " << bestSol.getCost() << std::endl; 
+    std::cout << "Tmax: " << A.Tmax << std::endl;
+    std::cout << "BaseCost: " << baseCost << std::endl;
+    std::cout << "TotalTimeSol: " << A.getTime(sol) << std::endl;
+    std::cout << "TotalCostSol: " << sol.getCost() << std::endl;
+    std::cout << std::endl;
 }

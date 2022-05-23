@@ -73,8 +73,8 @@ struct VM {
 
         if (flag) {
             for (auto& i : sch) {
-                int64_t endT = i.startT + i.work->t(X);
-                if ((i.startT <= time && endT >= time) || (i.startT <= (time + w(X)) && endT >= (time + w(X)))) {
+                int64_t endT = i.startT + (*i.work)(X);
+                if ((i.startT <= time && endT > time) || (i.startT < (time + w(X)) && endT >= (time + w(X)))) {
                     flag = false;
                     break;
                 }

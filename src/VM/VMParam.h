@@ -80,20 +80,3 @@ public:
         return cost * step;
     }
 };
-
-using Parameters = std::map<std::string, std::unique_ptr<BaseParam>>;
-const std::array<std::string, 4> NAME_PARAM = {"vCPU", "vRAM", "vHDD", "vIO"};
-
-BaseParam* createParam(const std::string& name, const int64_t& value = 0) {
-    if (name == NAME_PARAM[0]) {
-        return new Param<1, 100, 1, 400, 0>(value);
-    } else if (name == NAME_PARAM[1]) {
-        return new Param<1, 256, 1, 300, 0>(value);
-    } else if (name == NAME_PARAM[2]) {
-        return new Param<1, 2048, 1, 100, 0>(value);
-    } else if (name == NAME_PARAM[3]) {
-        return new Param<1, 128, 1, 300, 0>(value);
-    } else {
-        throw "wrong name param";
-    }
-};

@@ -32,5 +32,5 @@ public:
 
     void secondStep(std::vector<size_t>& delVM);
 
-    void printAns();
+    void printAns(Solution& sol);
 };
